@@ -1,7 +1,7 @@
 use std::env::args;
-use std::fs::read_to_string; 
+use std::fs::read_to_string;
 
-fn get_lengths(from: i32, galaxies: &Vec<(i32, i32)>, verbose: bool) -> i32 {
+fn get_distance(from: i64, galaxies: &Vec<(i64, i64)>, verbose: bool) -> i64 {
     let mut sum = 0;
     for i in ((from + 1) as usize)..galaxies.len() {
         let dist = (&galaxies[from as usize].0 - &galaxies[i].0).abs()
@@ -9,10 +9,10 @@ fn get_lengths(from: i32, galaxies: &Vec<(i32, i32)>, verbose: bool) -> i32 {
         sum += dist;
         if verbose {
             println!(
-            "From galaxy {0} at [{1}, {2}] to galaxy {3} at [{4}, {5}] is {6} steps",
-            from,
-            &galaxies[from as usize].0,
-            &galaxies[from as usize].1,
+                "From galaxy {0} at [{1}, {2}] to galaxy {3} at [{4}, {5}] is {6} steps",
+                from,
+                &galaxies[from as usize].0,
+                &galaxies[from as usize].1,
                 i,
                 &galaxies[i].0,
                 &galaxies[i].1,
@@ -21,11 +21,66 @@ fn get_lengths(from: i32, galaxies: &Vec<(i32, i32)>, verbose: bool) -> i32 {
         }
     }
 
-    if from < galaxies.len() as i32 - 2 {
-        sum + get_lengths(from + 1, galaxies, verbose)
+    if from < galaxies.len() as i64 - 2 {
+        sum + get_distance(from + 1, galaxies, verbose)
     } else {
         sum
     }
+}
+
+fn expand_universe(galaxy_map: &mut Vec<(Vec<(char, usize)>, usize)>, factor: usize) {
+    // Expand rows
+    for row in &mut *galaxy_map {
+        let mut empty = true;
+        for ch in &mut *row.0 {
+            if ch.0 == '#' {
+                empty = false;
+            }
+        }
+
+        if empty {
+            row.1 = factor;
+        }
+    }
+
+    // Expand columns
+    for x in 0..galaxy_map[0].0.len() {
+        let mut empty = true;
+        for y in 0..galaxy_map.len() {
+            if galaxy_map[y].0[x].0 == '#' {
+                empty = false;
+            }
+        }
+
+        if empty {
+            for y in 0..galaxy_map.len() {
+                galaxy_map[y].0[x].1 = factor;
+            }
+        }
+    }
+}
+
+fn get_galaxy_locations(galaxy_map: &mut Vec<(Vec<(char, usize)>, usize)>) -> Vec<(i64, i64)> {
+    let mut galaxies: Vec<(i64, i64)> = vec![];
+    let mut act_y = 0;
+
+    for y in 0..galaxy_map.len() {
+        let mut act_x = 0;
+        act_y += galaxy_map[y].1 - 1;
+
+        for x in 0..galaxy_map[y].0.len() {
+            act_x += galaxy_map[y].0[x].1 - 1;
+            if galaxy_map[y].0[x].0 == '#' {
+                galaxies.push((act_x as i64, act_y as i64));
+            }
+
+            act_x += 1;
+        }
+
+        act_y += 1;
+    }
+
+    galaxies
 }
 
 fn main() {
@@ -42,8 +97,8 @@ fn main() {
         #...#....."
         .to_string();
 
-    let mut _part1 = false;
-    let mut _part2 = false;
+    let mut part1 = false;
+    let mut part2 = false;
     let mut path: Option<String> = None;
     let mut verbose = false;
     let mut args = args().skip(1);
@@ -51,8 +106,8 @@ fn main() {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-i" | "--input" => path = Some(args.next().expect("No path provided!")),
-            "-p1" | "--part1" => _part1 = true,
-            "-p2" | "--part2" => _part2 = true,
+            "-p1" | "--part1" => part1 = true,
+            "-p2" | "--part2" => part2 = true,
             "-v" | "--verbose" => verbose = true,
             "-h" | "--help" => {
                 print!(
@@ -76,79 +131,50 @@ fn main() {
         None
     };
 
-    let mut galaxy_map = if let Some(c) = content{
+    // Parse input
+    let mut galaxy_map = if let Some(c) = content {
         c.lines()
-        .map(|line| line.chars().collect::<Vec<char>>())
-        .collect::<Vec<Vec<char>>>()
+            .map(|line| {
+                (
+                    line.chars()
+                        .map(|char| (char, 1))
+                        .collect::<Vec<(char, usize)>>(),
+                    1,
+                )
+            })
+            .collect::<Vec<(Vec<(char, usize)>, usize)>>()
     } else {
         sample
-        .lines()
-        .map(|line| line.chars().collect::<Vec<char>>())
-        .collect::<Vec<Vec<char>>>()
+            .lines()
+            .map(|line| {
+                (
+                    line.chars()
+                        .map(|char| (char, 1))
+                        .collect::<Vec<(char, usize)>>(),
+                    1,
+                )
+            })
+            .collect::<Vec<(Vec<(char, usize)>, usize)>>()
     };
 
-    // Find empty columns and create a copy of each one, walking back to front so that no index manipulation is needed
-    let row_len = galaxy_map[0].len();
-    for i in 1..=row_len {
-        let mut empty = true;
+    let expansion_factor = if part1 {
+        2
+    } else if part2 {
+        1000000
+    } else {
+        panic!("Neither part 1 or 2 selected!");
+    };
 
-        for y in 0..galaxy_map.len() {
-            if galaxy_map[y][row_len - i] == '#' {
-                empty = false;
-            }
-        }
+    expand_universe(&mut galaxy_map, expansion_factor);
 
-        if empty {
-            for ii in 0..galaxy_map.len() {
-                galaxy_map[ii].insert(row_len - i, '.');
-            }
-        }
-    }
-
-    // Find empty rows and create a copy of each one, walking bottom to top so that no index manipulation is needed
-    let row_count = galaxy_map.len();
-    for i in 1..=row_count {
-        let mut empty = true;
-        for ch in &galaxy_map[row_count - i] {
-            if *ch == '#' {
-                empty = false;
-            }
-        }
-
-        if empty {
-            galaxy_map.insert(row_count - i, galaxy_map[row_count - i].clone());
-        }
-    }
-
-    if verbose {
-        println!(
-            "{}\n",
-            galaxy_map
-                .iter()
-                .map(|row| {
-                    let mut tmp = row.iter().collect::<String>();
-                    tmp.push('\n');
-                    tmp
-                })
-                .collect::<String>()
-        );
-    }
-
-    let mut galaxies: Vec<(i32, i32)> = vec![];
-    for y in 0..galaxy_map.len() {
-        for x in 0..galaxy_map[y].len() {
-            if galaxy_map[y][x] == '#' {
-                galaxies.push((x as i32, y as i32));
-            }
-        }
-    }
+    let galaxies = get_galaxy_locations(&mut galaxy_map);
 
     if verbose {
         for galaxy in &galaxies {
             println!("x:{} y:{}", galaxy.0, galaxy.1);
         }
-        print!("\n"); 
+        print!("\n");
     }
 
-    println!("total distance is {}", get_lengths(0, &galaxies, verbose));
+    println!("total distance is {}", get_distance(0, &galaxies, verbose));
 }
